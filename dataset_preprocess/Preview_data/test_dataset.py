@@ -1,65 +1,38 @@
 import os
-import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from torch.utils.data import DataLoader
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import numpy as np
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from custom_dataset.DatasetController import DatasetController
+from custom_dataset.CustomDataset import RTDataset  # đảm bảo file RTDataset của bạn được lưu là `rtdataset.py`
 
-def save_image_with_mask(image, mask, filename, save_dir):
-    """
-    image: (H, W, 3) or (H, W, 4)
-    mask: (H, W, 1)
-    """
-    if image.shape[-1] == 4:
-        image = image[..., :3]
+def save_image_and_mask(image, mask, filename_prefix, save_dir):
+    image = image.numpy().transpose(1, 2, 0)  # (C, H, W) -> (H, W, C)
+    mask = mask.numpy().squeeze()            # (1, H, W) -> (H, W)
 
-    mask_vis = np.repeat(mask, 3, axis=-1)  # convert mask to 3 channels
+    image_vis = image[..., :3]               # Chỉ hiển thị RGB nếu có kênh phụ
+    mask_vis = np.stack([mask] * 3, axis=-1)  # Đổi mask thành 3 channel để hiển thị cạnh ảnh
 
-    combined = np.concatenate([image, mask_vis], axis=1)  # (H, W*2, 3)
-    
-    filename = os.path.splitext(filename)[0] + ".png"
+    combined = np.concatenate([image_vis, mask_vis], axis=1)
 
-    plt.imsave(os.path.join(save_dir, filename), combined)
+    plt.imsave(os.path.join(save_dir, f"{filename_prefix}.png"), combined)
 
-def main():
-    save_dir = "debug_output"
+def debug_dataset(dataset, save_dir, prefix):
     os.makedirs(save_dir, exist_ok=True)
-
-    train_ds = DatasetController.get_cell_nuclei_train_wrapper(
-        dataset_path="/home/ltnghia02/MEDICAL_ITERATIVE/dataset/cell_nuclei_crop_96",
-        batch_size=32,
-        add_channel=True,
-        buffer_size = 10
-    ).dataset
-
-    test_ds = DatasetController.get_cell_nuclei_test_wrapper(
-        dataset_path="/home/ltnghia02/MEDICAL_ITERATIVE/dataset/cell_nuclei_crop_96",
-        batch_size=4,
-        add_channel=True,
-    ).dataset
-
-    # Lấy một batch train
-    train_iter = iter(train_ds)
-    train_images, train_masks = next(train_iter)
-
-    # Lưu từng ảnh trong batch
-    for i in range(train_images.shape[0]):
-        img = train_images[i].numpy()
-        msk = train_masks[i].numpy()
-        save_image_with_mask(img, msk, f"train_{i}.png", save_dir)
-
-    # Lấy một batch test
-    test_iter = iter(test_ds)
-    test_images, test_masks, test_filenames = next(test_iter)
-
-    for i in range(test_images.shape[0]):
-        img = test_images[i].numpy()
-        msk = test_masks[i].numpy()
-        save_image_with_mask(img, msk, f"test_{i}_{test_filenames[i].numpy().decode()}", save_dir)
-
-    print(f"✅ Saved {train_images.shape[0]} train and {test_images.shape[0]} test samples to '{save_dir}'.")
+    loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    for i, (image, mask) in enumerate(loader):
+        if i >= 5: break
+        save_image_and_mask(image[0], mask[0], f"{prefix}_{i}", save_dir)
 
 if __name__ == "__main__":
-    main()
+    dataset_path = "/home/ltnghia02/MEDICAL_ITERATIVE/dataset/RTdata_Crop_512"  # TODO: chỉnh path đúng
+
+    train_dataset = RTDataset(dataset_path, add_channel=False, normalize=True, thin_label=False, train=True)
+    test_dataset = RTDataset(dataset_path, add_channel=False, normalize=True, thin_label=False, train=False)
+
+    debug_dataset(train_dataset, "debug_output/train", "train")
+    debug_dataset(test_dataset, "debug_output/test", "test")
+
+    print("✅ Done. Check 'debug_output/train' and 'debug_output/test' folders.")

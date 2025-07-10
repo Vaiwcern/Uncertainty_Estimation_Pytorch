@@ -7,7 +7,7 @@ import imageio.v2 as imageio
 import cv2
 import random
 
-class RTDatasetTorch(Dataset):
+class RTDataset(Dataset):
     def __init__(self, dataset_dir, add_channel=True, normalize=True, train=True, thin_label=False):
         self.image_dir = Path(dataset_dir) / ("imagery" if train else "imagery_test")
         self.mask_dir = Path(dataset_dir) / ("masks" if thin_label else "masks_thick")
@@ -45,11 +45,12 @@ class RTDatasetTorch(Dataset):
             zero_channel = np.zeros_like(image[..., :1])
             image = np.concatenate([image, zero_channel], axis=-1)
 
-        # Transpose to (C, H, W) for PyTorch
-        image = torch.tensor(image.transpose(2, 0, 1), dtype=torch.float32)
-        mask = torch.tensor(mask.transpose(2, 0, 1), dtype=torch.float32)
+        # Transpose to (C, H, W) for PyTorch and ensure the array is contiguous
+        image = torch.tensor(image.transpose(2, 0, 1).copy(), dtype=torch.float32)
+        mask = torch.tensor(mask.transpose(2, 0, 1).copy(), dtype=torch.float32)
 
         return image, mask
+
 
     def augment_pair(self, image, mask):
         if random.random() < 0.5:

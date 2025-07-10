@@ -33,12 +33,14 @@ class ConvBlock(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-class IterativeUNet(nn.Module):
-    def __init__(self, input_channels=4, dropout_rate=0.5, norm_type='group'):
+class Unet(nn.Module):
+    def __init__(self, model_type="iterative", input_channels=4, dropout_rate=0.5, norm_type='group'):
         super().__init__()
         self.dropout_rate = dropout_rate
         self.norm_type = norm_type
+        self.model_type = model_type
 
+        # Encoder
         self.conv1 = ConvBlock(input_channels, 64, dropout_rate, norm_type)
         self.pool1 = nn.MaxPool2d(2)
         self.conv2 = ConvBlock(64, 128, dropout_rate, norm_type)
@@ -46,10 +48,11 @@ class IterativeUNet(nn.Module):
         self.conv3 = ConvBlock(128, 256, dropout_rate, norm_type)
         self.pool3 = nn.MaxPool2d(2)
         self.conv4 = ConvBlock(256, 512, dropout_rate, norm_type)
-        self.pool4 = nn.MaxPool2d(2)
 
+        # Bottleneck
         self.bottleneck = ConvBlock(512, 1024, dropout_rate, norm_type)
 
+        # Decoder
         self.up6 = nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1, output_padding=1)
         self.conv6 = ConvBlock(1024, 512, dropout_rate, norm_type)
         self.up7 = nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1)
@@ -59,6 +62,7 @@ class IterativeUNet(nn.Module):
         self.up9 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1)
         self.conv9 = ConvBlock(128, 64, dropout_rate, norm_type)
 
+        # Output Layer
         self.output_layer = nn.Conv2d(64, 1, kernel_size=1)
 
     def forward_once(self, x):
@@ -69,9 +73,8 @@ class IterativeUNet(nn.Module):
         c3 = self.conv3(p2)
         p3 = self.pool3(c3)
         c4 = self.conv4(p3)
-        p4 = self.pool4(c4)
 
-        bn = self.bottleneck(p4)
+        bn = self.bottleneck(c4)
 
         u6 = self.up6(bn)
         u6 = torch.cat([u6, c4], dim=1)
@@ -92,9 +95,16 @@ class IterativeUNet(nn.Module):
         return self.output_layer(c9)
 
     def forward(self, x):
-        x = x[:, :3, :, :]  # Remove feedback channel
-        zero_channel = torch.zeros_like(x[:, :1, :, :])
-        for _ in range(3):
-            x_input = torch.cat([x, zero_channel], dim=1)
-            zero_channel = self.forward_once(x_input)
-        return zero_channel
+        if self.model_type == "iterative": 
+            x = x[:, :3, :, :]  # Remove feedback channel
+            zero_channel = torch.zeros_like(x[:, :1, :, :])
+            
+            # Apply feedback for 3 iterations
+            for _ in range(3):
+                x_input = torch.cat([x, zero_channel], dim=1)
+                zero_channel = self.forward_once(x_input)
+        
+        if self.model_type == "vanilla": 
+            output = self.forward_once(x)
+        
+        return output
