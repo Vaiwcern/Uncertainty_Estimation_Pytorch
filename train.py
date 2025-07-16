@@ -15,6 +15,9 @@ import torch.distributed as dist
 
 from ddp_setup import ddp_setup, find_free_port, ddp_cleanup
 
+# import torch
+# torch.backends.cudnn.benchmark = True
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Unet model on specific GPUs.')
 

@@ -37,6 +37,8 @@ def load_model_from_folder(folder_path, epoch):
         raise NotImplementedError(f"Model type {config['model']} not implemented yet!")
 
     weight_path = os.path.join(folder_path, f"model_epoch_{epoch}.pth")
+    if epoch == -1: 
+        weight_path = os.path.join(folder_path, f"best_model.pth")
     state_dict = torch.load(weight_path, map_location="cpu")
 
     # 👉 Strip 'module.' prefix if exists
@@ -116,7 +118,7 @@ def predict_and_save_results(model_path, epoch, data_loader, save_path, training
                 ))
 
     # Save all predicted samples
-    with ProcessPoolExecutor(max_workers=46//world_size) as executor:
+    with ProcessPoolExecutor(max_workers=8) as executor:
         list(tqdm(executor.map(save_sample_wrapper, results_to_save), total=len(results_to_save), desc=f"[GPU {rank}] 💾 Saving"))
 
 def merge_prediction_results(save_path, epoch, world_size):

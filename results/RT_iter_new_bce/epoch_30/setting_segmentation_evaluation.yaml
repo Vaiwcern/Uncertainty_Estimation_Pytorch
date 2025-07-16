@@ -1,0 +1,9 @@
+metric_type: segmentation
+prediction_path: /home/ltnghia02/MEDICAL_ITERATIVE/predictions/RT_iter_new_bce
+epoch: 30
+model_type: iterative
+samples: 1
+relaxed_ccq: false
+n_rows: 1
+n_cols: 1
+save_path: /home/ltnghia02/MEDICAL_ITERATIVE/source_pytorch/results/RT_iter_new_bce

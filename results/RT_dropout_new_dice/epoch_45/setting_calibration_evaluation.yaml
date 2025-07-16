@@ -1,0 +1,9 @@
+metric_type: calibration
+prediction_path: /home/ltnghia02/MEDICAL_ITERATIVE/predictions/RT_iter_dropout_new
+epoch: 45
+model_type: iterative
+samples: 5
+relaxed_ccq: true
+n_rows: 1
+n_cols: 1
+save_path: /home/ltnghia02/MEDICAL_ITERATIVE/source_pytorch/results/RT_dropout_new

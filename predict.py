@@ -91,7 +91,9 @@ def main_worker(rank, args, world_size):
         batch_size=args.batch_size,
         add_channel=False,  
         num_workers=8,
-        distributed=True
+        distributed=True, 
+        rank=rank,
+        world_size=world_size
     )
 
     # === Predict and Save ===

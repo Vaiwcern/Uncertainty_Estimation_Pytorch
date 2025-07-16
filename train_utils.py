@@ -16,7 +16,6 @@ import torch.distributed as dist
 from loss_factory import LossFactory
 from torch.amp import autocast, GradScaler
 
-
 def train(
     model: str,
     train_loader,
@@ -59,7 +58,9 @@ def train(
     my_model = DDP(my_model, device_ids=[rank])
 
     # Choose the optimizer
-    optimizer = optim.Adam(my_model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.AdamW(my_model.parameters(), lr=1e-4, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
+
     loss_fn = LossFactory.get_loss_fn(loss_function)
 
     # Mixed precision
@@ -73,9 +74,15 @@ def train(
     # auc_metric = torchmetrics.AUROC(task='binary', num_classes=2).to(device)
     # prauc_metric = torchmetrics.AveragePrecision(task='binary').to(device)
 
+
+    best_loss = float('inf')
+    patience = 5
+    epochs_no_improve = 0
+    # min_delta = 0.001    
+
     # Start training
     start = time.time()
-
+    
     for epoch in range(num_epoch):
         if hasattr(train_loader.sampler, "set_epoch"):
             train_loader.sampler.set_epoch(epoch)
@@ -100,8 +107,9 @@ def train(
 
             with autocast(device_type="cuda"):
                 outputs, _ = my_model(images, h, s)  # Forward pass
-                pred = outputs[-1]
-                loss = loss_fn(pred, masks)  # Compute loss
+                loss = 0 
+                for pred in outputs: 
+                    loss += loss_fn(pred, masks)  # Compute loss
 
             # Backward pass and optimization
 
@@ -125,10 +133,10 @@ def train(
             # Print every `save_per_epoch` steps
             if rank == 0: 
                 if i % save_per_epoch == 0:
-                    print(f"[GPU {rank}] Epoch [{epoch+1}/{num_epoch}], Step [{i}/{len(train_loader)}], Loss: {loss.item():.4f}")
+                    print(f"[GPU {rank}] Epoch [{epoch+1}/{num_epoch}], Step [{i}/{len(train_loader)}], Loss: {loss.item():.10f}", flush=True)
 
         # Print summary of metrics for the epoch
-        print(f"[GPU {rank}] Epoch [{epoch+1}/{num_epoch}] | Loss: {running_loss / len(train_loader):.4f} "
+        print(f"[GPU {rank}] Epoch [{epoch+1}/{num_epoch}] | Loss: {running_loss / len(train_loader):.10f} "
               f"| Acc: {accuracy_metric.compute():.4f} "
               f"| IoU: {iou_metric.compute():.4f} "
               f"| F1: {f1_metric.compute():.4f} " )
@@ -139,6 +147,23 @@ def train(
         if rank == 0:
             if (epoch + 1) % save_per_epoch == 0:
                 torch.save(my_model.state_dict(), os.path.join(save_path, f"model_epoch_{epoch+1}.pth"))
+
+        avg_loss = running_loss / len(train_loader)
+        if rank == 0:
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                epochs_no_improve = 0
+                torch.save(my_model.state_dict(), os.path.join(save_path, f"best_model.pth"))
+                print(f"[GPU {rank}] ✅ New best loss: {best_loss:.10f} (model saved)")
+            else:
+                epochs_no_improve += 1
+                print(f"[GPU {rank}] 🔁 No improvement in loss for {epochs_no_improve} epoch(s)")
+
+            if epochs_no_improve >= patience:
+                print(f"[GPU {rank}] 🛑 Early stopping triggered at epoch {epoch+1}")
+                break
+        
+        scheduler.step(avg_loss)  
 
         torch.cuda.empty_cache()
 
